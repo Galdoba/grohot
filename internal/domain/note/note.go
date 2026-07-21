@@ -1,9 +1,11 @@
 package note
 
+import "github.com/Galdoba/grohot/internal/domain/note/frontmatter"
+
 type Note struct {
 	Name        string //name of note, used in [[internal links]]
 	Filepath    string //path to note file
-	Frontmatter map[string]any
+	Frontmatter frontmatter.Frontmatter
 	Nodes       []ContentNode
 }
 
@@ -12,4 +14,3 @@ type ContentNode struct {
 	Type   string
 	Text   string
 }
-
