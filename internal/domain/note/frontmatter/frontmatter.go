@@ -107,16 +107,59 @@ func (f *Frontmatter) ResolveTypes() {
 // Parse extracts a YAML frontmatter block from a slice of lines (including
 // the surrounding delimiter lines). Properties are created with TypeAliases
 // for the "aliases" key, and TypeUndefined for everything else.
-func Parse(lines []string) (*Frontmatter, error) {
-	body, err := findDelimiters(lines)
+// func Parse(lines []string) (*Frontmatter, error) {
+// 	body, err := findDelimiters(lines)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	props, err := parseBody(body)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return &Frontmatter{Properties: props}, nil
+// }
+
+// Parse extracts YAML frontmatter from a slice of lines.
+// It returns the parsed Frontmatter, the remaining lines after the frontmatter,
+// and an error if any.
+// If no frontmatter is present, it returns (nil, allLines, nil).
+func Parse(lines []string) (*Frontmatter, []string, error) {
+	start, end, err := findFrontmatterRange(lines)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	if start == -1 {
+		return nil, lines, nil
+	}
+	body := lines[start+1 : end]
 	props, err := parseBody(body)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("failed to parse frontmatter body: %w", err)
 	}
-	return &Frontmatter{Properties: props}, nil
+	fm := &Frontmatter{Properties: props}
+	rest := lines[end+1:]
+	return fm, rest, nil
+}
+
+// findFrontmatterRange returns the start and end indices of the frontmatter
+// delimiters ("---"). Returns (-1, -1, nil) if no frontmatter is found.
+// Returns an error if an opening delimiter is found but no closing delimiter.
+func findFrontmatterRange(lines []string) (start, end int, err error) {
+	if len(lines) == 0 {
+		return -1, -1, nil
+	}
+	// Obsidian usually has no leading spaces, but for safety reasons.
+	if strings.TrimSpace(lines[0]) != "---" {
+		return -1, -1, nil
+	}
+	start = 0
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			end = i
+			return start, end, nil
+		}
+	}
+	return -1, -1, fmt.Errorf("unclosed frontmatter: opening delimiter found but no closing delimiter")
 }
 
 // findDelimiters locates the opening and closing delimiter lines and returns
@@ -268,4 +311,24 @@ func (f *Frontmatter) String() string {
 	b.WriteString(delimiter)
 	b.WriteByte('\n')
 	return b.String()
+}
+
+// ParseBytes is a Parse convinience wrapper.
+func ParseBytes(data []byte) (*Frontmatter, error) {
+	fm, _, err := Parse(strings.Split(string(data), "\n"))
+	return fm, err
+}
+
+// LineCount is a convinience func that tells which line in file is last for frontmatter.
+func (f *Frontmatter) LineCount() int {
+	count := 2
+	for _, p := range f.Properties {
+		if p.Value.List != nil {
+			count++                    // key line
+			count += len(p.Value.List) // list elements
+		} else {
+			count++
+		}
+	}
+	return count
 }
