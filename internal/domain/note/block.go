@@ -35,6 +35,7 @@ type BlockMetadata struct {
 }
 
 // GenerateBlockID creates a stable ID from a block's metadata.
+// The ID has the format "path|sequence" and is used to uniquely identify a block.
 func GenerateBlockID(meta BlockMetadata) string {
 	return fmt.Sprintf("%s|%d", meta.Path, meta.Sequence)
 }

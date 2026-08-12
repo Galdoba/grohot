@@ -102,9 +102,36 @@ func (p *Parser) closeCurrentBlock(state *parseState) {
 // emitBlockLine appends a line to the active block. If the block type differs or the
 // previous block was closed, a new block is created. Otherwise the line is appended
 // to the existing block’s RawText with a newline separator.
+// func (p *Parser) emitBlockLine(state *parseState, line string, blockType note.BlockType) {
+// 	needNewBlock := state.blockClosed ||
+// 		len(state.blocks) == 0 ||
+// 		state.blocks[len(state.blocks)-1].Metadata.Type != blockType
+
+// 	if needNewBlock {
+// 		state.blocks = append(state.blocks, note.ContentBlock{
+// 			RawText: line,
+// 			Metadata: note.BlockMetadata{
+// 				Type: blockType,
+// 			},
+// 		})
+// 		state.blockClosed = false
+// 		return
+// 	}
+
+// 	// Append to the last block.
+// 	last := &state.blocks[len(state.blocks)-1]
+// 	if last.RawText == "" {
+// 		last.RawText = line
+// 	} else {
+// 		last.RawText += "\n" + line
+// 	}
+// }
+
 func (p *Parser) emitBlockLine(state *parseState, line string, blockType note.BlockType) {
 	needNewBlock := state.blockClosed ||
 		len(state.blocks) == 0 ||
+		// ВСЕГДА начинаем новый блок для заголовков, чтобы они не склеивались
+		blockType == note.TypeHeading ||
 		state.blocks[len(state.blocks)-1].Metadata.Type != blockType
 
 	if needNewBlock {
@@ -118,7 +145,7 @@ func (p *Parser) emitBlockLine(state *parseState, line string, blockType note.Bl
 		return
 	}
 
-	// Append to the last block.
+	// Склеиваем только для не‑заголовков
 	last := &state.blocks[len(state.blocks)-1]
 	if last.RawText == "" {
 		last.RawText = line

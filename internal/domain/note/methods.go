@@ -1,6 +1,6 @@
 package note
 
-// BlockByID returns a block by its stable ID.
+// BlockByID returns the block with the given stable ID, or nil if not found.
 func (n *Note) BlockByID(id string) *ContentBlock {
 	for i := range n.Blocks {
 		if n.Blocks[i].ID() == id {

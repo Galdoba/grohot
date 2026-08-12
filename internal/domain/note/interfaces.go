@@ -7,5 +7,5 @@ type BlockParser interface {
 
 // HierarchyBuilder defines the contract for building hierarchical metadata.
 type HierarchyBuilder interface {
-	Build(blocks []ContentBlock) ([]ContentBlock, error)
+	Build(blocks []ContentBlock, filepath string) ([]ContentBlock, error)
 }
