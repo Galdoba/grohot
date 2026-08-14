@@ -1,6 +1,7 @@
 package note
 
 import (
+	"github.com/Galdoba/grohot/internal/domain/link"
 	"github.com/Galdoba/grohot/internal/domain/note/frontmatter"
 )
 
@@ -29,6 +30,9 @@ type Segment struct {
 
 	// Reference to the note's frontmatter for access to tags, dates, etc.
 	NoteFrontmatter *frontmatter.Frontmatter
+
+	IncomingLinks []link.Link
+	OutgoingLinks []link.Link
 }
 
 // SegmentTree is the top‑level container holding the entire hierarchical structure of a note.

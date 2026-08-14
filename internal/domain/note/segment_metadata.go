@@ -42,9 +42,9 @@ func (st *SegmentTree) PopulateMetadata(filepath string, fm *frontmatter.Frontma
 func (seg *Segment) ToChunkText() string {
 	var b strings.Builder
 	if len(seg.Ancestors) > 0 || seg.Header != nil {
-		b.WriteString("Context: ")
-		b.WriteString(seg.BreadCrumbs())
-		b.WriteString("\n\n")
+		// b.WriteString("Context: ")
+		// b.WriteString(seg.BreadCrumbs())
+		// b.WriteString("\n\n")
 	} else if seg.Header == nil && seg.Parent == nil {
 		// корень
 		if seg.NoteFrontmatter != nil {
@@ -55,6 +55,17 @@ func (seg *Segment) ToChunkText() string {
 			}
 		}
 	}
+	for _, block := range seg.OwnBlocks {
+		b.WriteString(block.RawText)
+		b.WriteString("\n\n")
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// Text возвращает склеенный текст непосредственных блоков сегмента (OwnBlocks),
+// без учёта дочерних сегментов.
+func (seg *Segment) Text() string {
+	var b strings.Builder
 	for _, block := range seg.OwnBlocks {
 		b.WriteString(block.RawText)
 		b.WriteString("\n\n")

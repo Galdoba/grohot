@@ -9,3 +9,13 @@ type BlockParser interface {
 type HierarchyBuilder interface {
 	Build(blocks []ContentBlock, filepath string) ([]ContentBlock, error)
 }
+
+// Chunker определяет контракт для преобразования сегмента в один или несколько чанков.
+type Chunker interface {
+	Chunk(segment *Segment) ([]Chunk, error)
+}
+
+// Embedder определяет контракт для получения векторного представления текста.
+type Embedder interface {
+	Embed(text string) ([]float64, error)
+}
