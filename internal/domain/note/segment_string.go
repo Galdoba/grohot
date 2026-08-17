@@ -7,6 +7,12 @@ import (
 	"github.com/Galdoba/grohot/internal/domain/note/frontmatter/property"
 )
 
+// Display limits for property value formatting.
+const (
+	maxPropertyListItems    = 3  // maximum number of list items shown in String()
+	maxPropertyScalarLength = 40 // maximum length of scalar value shown in String()
+)
+
 // String returns detailed information about the segment and its contents.
 // This method is intended for debugging and diagnostics.
 func (seg *Segment) String() string {
@@ -105,15 +111,15 @@ func (seg *Segment) writeProjectedFrontmatter(b *strings.Builder) {
 func formatPropertyValue(p *property.Property) string {
 	if p.Value.List != nil {
 		items := p.Value.List
-		if len(items) > 3 {
-			items = items[:3]
+		if len(items) > maxPropertyListItems {
+			items = items[:maxPropertyListItems]
 			return fmt.Sprintf("[%s, ...] (%d total)", strings.Join(items, ", "), len(p.Value.List))
 		}
 		return fmt.Sprintf("[%s]", strings.Join(items, ", "))
 	}
 	val := p.Value.Scalar
-	if len(val) > 40 {
-		val = val[:40] + "..."
+	if len(val) > maxPropertyScalarLength {
+		val = val[:maxPropertyScalarLength] + "..."
 	}
 	return fmt.Sprintf("%q", val)
 }

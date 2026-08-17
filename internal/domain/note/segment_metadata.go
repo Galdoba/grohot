@@ -8,45 +8,46 @@ import (
 	"github.com/Galdoba/grohot/internal/domain/note/frontmatter"
 )
 
-// bytesPerToken is the divisor used to approximate token count from character length.
+// runesPerToken is the divisor used to approximate token count from character length.
+// This heuristic assumes roughly 4 characters per token for English text.
 const runesPerToken = 4
 
-// PopulateMetadata fills in all computed fields (ID, Breadcrumb, Ancestors, etc.)
-// for every segment in the tree. This method mutates the segments.
+// segmentIDHashBytes is the number of bytes from SHA-256 used in segment ID.
+const segmentIDHashBytes = 16
+
+// PopulateMetadata fills in all computed fields for every segment in the tree.
+// This method mutates the segments.
 func (st *SegmentTree) PopulateMetadata(filepath string, fm *frontmatter.Frontmatter) {
-	var walk func(seg *Segment)
-	walk = func(seg *Segment) {
-		seg.NoteFrontmatter = fm
-		seg.FilePath = filepath
-		seg.Ancestors = seg.getAncestors() // уже есть
-		seg.ID = seg.computeID(filepath)
-		seg.TokenCount = seg.computeTokenCounts()
-		seg.CharCount = seg.computeCharCount()
-		seg.DomType = seg.determineDomType()
-		//WARN:
-		//CharCount и TokenCount считаются рекурсивно по всему поддереву, а DomType – только по собственным блокам.
-		// Если в родительском сегменте одни параграфы, а в дочернем – большая таблица, родитель получит тип "text", хотя при чанковании всего сегмента в нём будет таблица.
-		// Это может запутать стратегии чанкования.
-		//
-		// Рекомендация: либо рассчитывать DomType тоже рекурсивно (с учётом детей), либо добавить отдельное поле LocalDomType.
-		// Пока можно оставить как есть, но пометить комментарием, что тип отражает только непосредственное содержимое.
-		for _, child := range seg.Children {
-			walk(child)
-		}
+	st.walkAndPopulate(st.Root, filepath, fm)
+}
+
+// walkAndPopulate recursively traverses the segment tree and populates metadata
+// for each node.
+func (st *SegmentTree) walkAndPopulate(seg *Segment, filepath string, fm *frontmatter.Frontmatter) {
+	if seg == nil {
+		return
 	}
-	walk(st.Root)
+	seg.NoteFrontmatter = fm
+	seg.FilePath = filepath
+	seg.Ancestors = seg.getAncestors()
+	seg.ID = seg.computeID(filepath)
+	seg.TokenCount = seg.computeTokenCounts()
+	seg.CharCount = seg.computeCharCount()
+	seg.DomType = seg.determineDomType()
+
+	for _, child := range seg.Children {
+		st.walkAndPopulate(child, filepath, fm)
+	}
 }
 
 // ToChunkText returns the segment's text prefixed by breadcrumbs and ancestor headings
 // to improve contextual search during indexing.
+// For the root segment, the note title (if available) is used as context.
 func (seg *Segment) ToChunkText() string {
 	var b strings.Builder
-	if len(seg.Ancestors) > 0 || seg.Header != nil {
-		// b.WriteString("Context: ")
-		// b.WriteString(seg.BreadCrumbs())
-		// b.WriteString("\n\n")
-	} else if seg.Header == nil && seg.Parent == nil {
-		// корень
+
+	if seg.Parent == nil && seg.Header == nil {
+		// Root segment: prepend note title from frontmatter if present.
 		if seg.NoteFrontmatter != nil {
 			if title := seg.NoteFrontmatter.Get("title"); title != nil {
 				b.WriteString("Note: ")
@@ -55,6 +56,7 @@ func (seg *Segment) ToChunkText() string {
 			}
 		}
 	}
+
 	for _, block := range seg.OwnBlocks {
 		b.WriteString(block.RawText)
 		b.WriteString("\n\n")
@@ -62,8 +64,8 @@ func (seg *Segment) ToChunkText() string {
 	return strings.TrimSpace(b.String())
 }
 
-// Text возвращает склеенный текст непосредственных блоков сегмента (OwnBlocks),
-// без учёта дочерних сегментов.
+// Text returns the concatenated text of the segment's immediate blocks (OwnBlocks),
+// without considering child segments.
 func (seg *Segment) Text() string {
 	var b strings.Builder
 	for _, block := range seg.OwnBlocks {
@@ -75,36 +77,16 @@ func (seg *Segment) Text() string {
 
 // computeID returns a hex hash of filepath + breadcrumb as a stable segment identifier.
 func (seg *Segment) computeID(filepath string) string {
-	var segmentMarker string
+	segmentMarker := "root"
 	if seg.Header != nil {
-		// используем чистый текст заголовка (без #)
+		// Use the clean heading text (without # markers)
 		segmentMarker = stripHeadingMarkers(seg.Header.RawText)
-	} else {
-		segmentMarker = "root"
 	}
-	// Собираем полный путь: filepath + предки + собственный заголовок
+	// Build the full path: filepath + ancestors + own heading
 	parts := append(seg.Ancestors, segmentMarker)
 	h := sha256.Sum256([]byte(filepath + " > " + strings.Join(parts, ">")))
-	return fmt.Sprintf("%x", h[:16])
+	return fmt.Sprintf("%x", h[:segmentIDHashBytes])
 }
-
-// // buildBreadcrumb assembles the full heading path from the root down to (and including)
-// // this segment. The root segment returns an empty string.
-// func (seg *Segment) buildBreadcrumb() string {
-// 	if seg.Parent == nil {
-// 		return ""
-// 	}
-// 	parts := make([]string, 0)
-// 	node := seg
-// 	for node.Parent != nil {
-// 		if node.Header != nil {
-// 			text := stripHeadingMarkers(node.Header.RawText)
-// 			parts = append([]string{text}, parts...)
-// 		}
-// 		node = node.Parent
-// 	}
-// 	return strings.Join(parts, " > ")
-// }
 
 // getAncestors returns the titles of all ancestor headings (excluding the current segment).
 func (seg *Segment) getAncestors() []string {
@@ -122,7 +104,7 @@ func (seg *Segment) getAncestors() []string {
 	return ancestors
 }
 
-// computeTokenCounts returns approximate token counts using the heuristic len(text)/bytesPerToken.
+// computeTokenCounts returns approximate token counts using the heuristic len(text)/runesPerToken.
 func (seg *Segment) computeTokenCounts() map[string]int {
 	text := seg.collectFullText()
 	return map[string]int{
@@ -136,6 +118,8 @@ func (seg *Segment) computeCharCount() int {
 }
 
 // determineDomType analyses OwnBlocks and returns the dominant content type.
+// Note: this considers only immediate blocks, not descendants.
+// This is intentional to keep the type relevant for the segment's own content.
 func (seg *Segment) determineDomType() string {
 	hasTable, hasCode := false, false
 	for _, b := range seg.OwnBlocks {

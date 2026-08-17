@@ -10,32 +10,25 @@ import (
 // as well as top-level sections.
 type Segment struct {
 	Header               *ContentBlock            // heading block that defines this section (nil for root)
-	OwnBlocks            []ContentBlock           // non‑heading blocks directly inside this section
+	OwnBlocks            []ContentBlock           // non-heading blocks directly inside this section
 	Parent               *Segment                 // parent section (nil for root)
 	Children             []*Segment               // immediately nested subsections
-	ProjectedFrontmatter *frontmatter.Frontmatter // reserved for future cross‑note extraction
+	ProjectedFrontmatter *frontmatter.Frontmatter // reserved for future cross-note extraction
 
-	//fullpath to note
-	FilePath string
-	// Stable identifier computed from filepath and breadcrumb.
-	ID string
-	// Titles of all ancestor headings (without # markers), from root to parent.
-	Ancestors []string
-	// Approximate token counts using different heuristics.
-	TokenCount map[string]int
-	// Total character length of the segment's text.
-	CharCount int
-	// Dominant content type: "text", "table", "code", or "mixed".
-	DomType string
+	FilePath   string         // full path to the source note file
+	ID         string         // stable identifier computed from filepath and breadcrumb
+	Ancestors  []string       // titles of all ancestor headings (without # markers), from root to parent
+	TokenCount map[string]int // approximate token counts using different heuristics
+	CharCount  int            // total character length of the segment's text
+	DomType    string         // dominant content type: "text", "table", "code", or "mixed"
 
-	// Reference to the note's frontmatter for access to tags, dates, etc.
-	NoteFrontmatter *frontmatter.Frontmatter
+	NoteFrontmatter *frontmatter.Frontmatter // reference to the note's frontmatter for tags, dates, etc.
 
-	IncomingLinks []link.Link
-	OutgoingLinks []link.Link
+	IncomingLinks []link.Link // links pointing to this segment
+	OutgoingLinks []link.Link // links originating from this segment
 }
 
-// SegmentTree is the top‑level container holding the entire hierarchical structure of a note.
+// SegmentTree is the top-level container holding the entire hierarchical structure of a note.
 type SegmentTree struct {
 	Root *Segment
 }

@@ -12,21 +12,29 @@ func (n *Note) Validate() error {
 	}
 	seenIDs := make(map[string]bool)
 	for i, block := range n.Blocks {
-		meta := block.Metadata
-		if meta.Filepath != "" && meta.Filepath != n.Filepath {
-			return fmt.Errorf("block at index %d has mismatched filepath: %s (expected %s)",
-				i, meta.Filepath, n.Filepath)
+		if err := validateBlock(block, n.Filepath, seenIDs); err != nil {
+			return fmt.Errorf("block at index %d: %w", i, err)
 		}
-		if !isValidType(meta.Type) {
-			return fmt.Errorf("block at index %d has invalid type: %q", i, meta.Type)
+	}
+	return nil
+}
+
+// validateBlock checks a single block for consistency with the note.
+// It returns an error if the block is invalid or has a duplicate ID.
+func validateBlock(block ContentBlock, noteFilepath string, seenIDs map[string]bool) error {
+	meta := block.Metadata
+	if meta.Filepath != "" && meta.Filepath != noteFilepath {
+		return fmt.Errorf("mismatched filepath: %s (expected %s)", meta.Filepath, noteFilepath)
+	}
+	if !isValidType(meta.Type) {
+		return fmt.Errorf("invalid type: %q", meta.Type)
+	}
+	if meta.Path != "" && meta.Sequence > 0 {
+		id := GenerateBlockID(meta)
+		if seenIDs[id] {
+			return fmt.Errorf("duplicate block ID: %s", id)
 		}
-		if meta.Path != "" && meta.Sequence > 0 {
-			id := GenerateBlockID(meta)
-			if seenIDs[id] {
-				return fmt.Errorf("duplicate block ID: %s", id)
-			}
-			seenIDs[id] = true
-		}
+		seenIDs[id] = true
 	}
 	return nil
 }

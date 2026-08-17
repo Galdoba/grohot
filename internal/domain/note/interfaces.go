@@ -10,12 +10,12 @@ type HierarchyBuilder interface {
 	Build(blocks []ContentBlock, filepath string) ([]ContentBlock, error)
 }
 
-// Chunker определяет контракт для преобразования сегмента в один или несколько чанков.
+// Chunker defines the contract for converting a segment into one or more chunks.
 type Chunker interface {
 	Chunk(segment *Segment) ([]Chunk, error)
 }
 
-// Embedder определяет контракт для получения векторного представления текста.
+// Embedder defines the contract for obtaining a vector representation of text.
 type Embedder interface {
 	Embed(text string) ([]float64, error)
 }

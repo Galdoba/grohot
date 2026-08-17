@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// String возвращает подробное человеко-читаемое представление чанка.
+// String returns a detailed human-readable representation of the chunk.
 func (c Chunk) String() string {
 	var b strings.Builder
 	b.WriteString("═══ Chunk ═══\n")
@@ -29,6 +29,7 @@ func (c Chunk) String() string {
 	return b.String()
 }
 
+// writeChunkMetadata appends formatted chunk metadata to the builder.
 func writeChunkMetadata(b *strings.Builder, m ChunkMetadata) {
 	fmt.Fprintf(b, "  SegmentID:    %s\n", m.SegmentID)
 	fmt.Fprintf(b, "  ChunkIndex:   %d\n", m.ChunkIndex)
@@ -41,8 +42,6 @@ func writeChunkMetadata(b *strings.Builder, m ChunkMetadata) {
 	fmt.Fprintf(b, "  TokenCount:   %d\n", m.TokenCount)
 	fmt.Fprintf(b, "  CharCount:    %d\n", m.CharCount)
 	fmt.Fprintf(b, "  Tags:         %v\n", m.Tags)
-	// fmt.Fprintf(b, "  Created:      %q\n", m.Created)
-	// fmt.Fprintf(b, "  Updated:      %q\n", m.Updated)
 
 	if len(m.Links) == 0 {
 		b.WriteString("  Links:        []\n")

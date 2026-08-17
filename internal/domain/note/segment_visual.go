@@ -11,9 +11,9 @@ const (
 	ownBlockDisplayWidth = 60 // number of runes for own block text in tree view
 )
 
-// Visual returns a pseudo‑graphical string representation of the segment tree.
-// The root is shown as "root". Headings include their level (h1‑h6),
-// and non‑heading blocks show their type and a preview of the content.
+// Visual returns a pseudo-graphical string representation of the segment tree.
+// The root is shown as "root". Headings include their level (h1-h6),
+// and non-heading blocks show their type and a preview of the content.
 func (st SegmentTree) Visual() string {
 	var b strings.Builder
 	b.WriteString("root")
@@ -32,27 +32,12 @@ func visualSegment(seg *Segment, prefix string, b *strings.Builder) {
 	idx := 0
 
 	for _, block := range seg.OwnBlocks {
-		connector := chooseConnector(idx, total)
-		text := formatOwnBlockText(block.RawText)
-		line := fmt.Sprintf("%s%s[%s] %s\n", prefix, connector, block.Metadata.Type, text)
-		b.WriteString(line)
+		writeVisualBlock(b, prefix, chooseConnector(idx, total), block)
 		idx++
 	}
 
 	for _, child := range seg.Children {
-		connector := chooseConnector(idx, total)
-
-		headingText := "<no heading>"
-		levelMarker := "??"
-		if child.Header != nil {
-			headingText = formatHeadingText(child.Header.RawText)
-			level := headingLevel(child.Header.RawText)
-			levelMarker = fmt.Sprintf("h%d", level)
-		}
-
-		headerLine := fmt.Sprintf("%s%s[%s] %s\n", prefix, connector, levelMarker, headingText)
-		b.WriteString(headerLine)
-
+		writeVisualChild(b, prefix, chooseConnector(idx, total), child)
 		newPrefix := prefix
 		if idx == total-1 {
 			newPrefix += "    "
@@ -62,6 +47,26 @@ func visualSegment(seg *Segment, prefix string, b *strings.Builder) {
 		visualSegment(child, newPrefix, b)
 		idx++
 	}
+}
+
+// writeVisualBlock writes a single own-block line to the builder.
+func writeVisualBlock(b *strings.Builder, prefix, connector string, block ContentBlock) {
+	text := formatOwnBlockText(block.RawText)
+	line := fmt.Sprintf("%s%s[%s] %s\n", prefix, connector, block.Metadata.Type, text)
+	b.WriteString(line)
+}
+
+// writeVisualChild writes a single child segment header line to the builder.
+func writeVisualChild(b *strings.Builder, prefix, connector string, child *Segment) {
+	headingText := "<no heading>"
+	levelMarker := "??"
+	if child.Header != nil {
+		headingText = formatHeadingText(child.Header.RawText)
+		level := headingLevel(child.Header.RawText)
+		levelMarker = fmt.Sprintf("h%d", level)
+	}
+	headerLine := fmt.Sprintf("%s%s[%s] %s\n", prefix, connector, levelMarker, headingText)
+	b.WriteString(headerLine)
 }
 
 // chooseConnector returns the tree connector for a given item index.

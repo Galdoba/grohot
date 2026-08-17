@@ -10,52 +10,69 @@ import (
 	"github.com/Galdoba/grohot/internal/domain/note/frontmatter"
 )
 
-// Chunk представляет собой единицу контента, готовую для эмбеддинга и индексации.
+// Constants for chunk ID and text embedding formatting.
+const (
+	chunkIDHashBytes    = 16 // number of bytes from SHA-256 used in chunk ID
+	embeddingSeparator  = "\n\n\n"
+	breadcrumbSeparator = " > "
+	contentTypePrefix   = "Content Type: "
+)
+
+// markdownReplacer removes common Markdown formatting symbols.
+// Immutable: safe for concurrent read access.
+var markdownReplacer = strings.NewReplacer(
+	"**", "",
+	"*", "",
+	"__", "",
+	"_", "",
+)
+
+// Chunk represents a unit of content ready for embedding and indexing.
 type Chunk struct {
-	ID        string        // стабильный идентификатор: segmentID + ":" + hash(Text)
-	Text      string        // исходный текст сегмента (без крошек)
-	Embedding []float64     // векторное представление, заполняется после эмбеддинга
-	Metadata  ChunkMetadata // структурированные метаданные
+	ID        string        // stable identifier: segmentID + ":" + hash(Text)
+	Text      string        // original segment text (without breadcrumbs)
+	Embedding []float64     // vector representation, filled after embedding
+	Metadata  ChunkMetadata // structured metadata
 }
 
-// ChunkInput содержит параметры для создания чанка из сегмента.
+// ChunkInput contains parameters for creating a chunk from a segment.
 type ChunkInput struct {
-	Text        string // текст этого конкретного чанка
-	Index       int    // порядковый номер чанка внутри сегмента (0‑based)
-	TotalChunks int    // общее число чанков, на которые разбит сегмент
+	Text        string // text of this specific chunk
+	Index       int    // ordinal number of the chunk inside the segment (0‑based)
+	TotalChunks int    // total number of chunks the segment was split into
 }
 
 // ChunkMetadata holds all information needed to describe, filter, and
 // reconstruct the context of a chunk.
 type ChunkMetadata struct {
-	// Идентификация и порядок
+	// Identification and ordering
 	SegmentID   string `json:"segment_id"`
-	ChunkIndex  int    `json:"chunk_index"`  // номер чанка внутри сегмента (0-based)
-	TotalChunks int    `json:"total_chunks"` // общее число чанков в этом сегменте
+	ChunkIndex  int    `json:"chunk_index"`  // chunk number within the segment (0-based)
+	TotalChunks int    `json:"total_chunks"` // total number of chunks in this segment
 
-	// Источник и иерархия
+	// Source and hierarchy
 	FilePath     string   `json:"file_path"`
-	Ancestors    []string `json:"ancestors"`     // ["Chapter 1"]
-	HeadingText  string   `json:"heading_text"`  //текст заголовка сегмента (без #).
-	HeadingLevel int      `json:"heading_level"` // 1..6, 0 для корня. (количество #)
+	Ancestors    []string `json:"ancestors"`     // e.g. ["Chapter 1"]
+	HeadingText  string   `json:"heading_text"`  // heading text of the segment (without #)
+	HeadingLevel int      `json:"heading_level"` // 1..6, 0 for root (number of #)
 
-	// Характеристики контента
+	// Content characteristics
 	DomType    string `json:"dom_type"`    // "text", "table", "code", "mixed"
-	TokenCount int    `json:"token_count"` // приблизительное число токенов
+	TokenCount int    `json:"token_count"` // approximate number of tokens
 	CharCount  int    `json:"char_count"`
 
-	// Свойства из frontmatter заметки
+	// Frontmatter properties of the note
 	Tags    []string `json:"tags,omitempty"`
 	Aliases []string `json:"aliases,omitempty"`
 	Created string   `json:"created,omitempty"`
 	Updated string   `json:"updated,omitempty"`
 
-	// Горизонтальные связи (будут добавлены позже)
+	// Horizontal links (will be added later)
 	Links []link.Link `json:"links,omitempty"`
 }
 
-// NewChunk создаёт один Chunk из сегмента и входных данных.
-// Возвращает ошибку, если входные параметры некорректны.
+// NewChunk creates a single Chunk from a segment and input data.
+// Returns an error if input parameters are invalid.
 func NewChunk(seg *Segment, input ChunkInput) (*Chunk, error) {
 	if err := validateChunkInput(input); err != nil {
 		return nil, err
@@ -64,10 +81,17 @@ func NewChunk(seg *Segment, input ChunkInput) (*Chunk, error) {
 		return nil, fmt.Errorf("segment cannot be nil")
 	}
 
-	chunkID := computeChunkID(seg.ID, input.Text)
+	chunk := &Chunk{
+		ID:   computeChunkID(seg.ID, input.Text),
+		Text: input.Text,
+	}
+	chunk.Metadata = buildChunkMetadata(seg, input)
+	return chunk, nil
+}
 
-	tokenCount := len([]rune(input.Text)) / runesPerToken
-
+// buildChunkMetadata constructs ChunkMetadata from segment and input.
+// This is a separate function to keep NewChunk at a single level of abstraction.
+func buildChunkMetadata(seg *Segment, input ChunkInput) ChunkMetadata {
 	meta := ChunkMetadata{
 		SegmentID:   seg.ID,
 		ChunkIndex:  input.Index,
@@ -76,44 +100,45 @@ func NewChunk(seg *Segment, input ChunkInput) (*Chunk, error) {
 		Ancestors:   seg.Ancestors,
 		DomType:     seg.DomType,
 		CharCount:   len([]rune(input.Text)),
-		Links:       nil, // будет заполнено позже
 	}
-	meta.TokenCount = tokenCount
-
-	// Заголовок сегмента
-	if seg.Header != nil {
-		meta.HeadingText = stripHeadingMarkers(seg.Header.RawText)
-		meta.HeadingLevel = headingLevel(seg.Header.RawText)
-	}
-
-	// Количество токенов из карты (первое доступное)
-	if count, ok := seg.TokenCount["char_div_4"]; ok {
-		meta.TokenCount = count
-	} else {
-		// fallback
-		for _, count := range seg.TokenCount {
-			meta.TokenCount = count
-			break
-		}
-	}
-
-	// Свойства из frontmatter заметки
-	if seg.NoteFrontmatter != nil {
-		meta.Tags = extractStringList(seg.NoteFrontmatter, "tags")
-		meta.Aliases = extractStringList(seg.NoteFrontmatter, "aliases")
-		meta.Created = extractScalar(seg.NoteFrontmatter, "created")
-		meta.Updated = extractScalar(seg.NoteFrontmatter, "updated")
-	}
-
-	chunk := &Chunk{
-		ID:       chunkID,
-		Text:     input.Text,
-		Metadata: meta,
-	}
-	return chunk, nil
+	meta.TokenCount = determineChunkTokenCount(seg, input.Text)
+	setChunkHeading(&meta, seg)
+	setChunkFrontmatter(&meta, seg)
+	return meta
 }
 
-// validateChunkInput проверяет входные параметры чанка.
+// determineChunkTokenCount selects the best available token count heuristic.
+// Currently falls back to len(text)/runesPerToken if no heuristic is present.
+func determineChunkTokenCount(seg *Segment, chunkText string) int {
+	if count, ok := seg.TokenCount["char_div_4"]; ok {
+		return count
+	}
+	// Fallback: compute from chunk text directly
+	return len([]rune(chunkText)) / runesPerToken
+}
+
+// setChunkHeading fills heading-related metadata from the segment's header.
+func setChunkHeading(meta *ChunkMetadata, seg *Segment) {
+	if seg.Header == nil {
+		return
+	}
+	meta.HeadingText = stripHeadingMarkers(seg.Header.RawText)
+	meta.HeadingLevel = headingLevel(seg.Header.RawText)
+}
+
+// setChunkFrontmatter extracts relevant frontmatter properties.
+// It assumes seg.NoteFrontmatter is already populated by the segment tree.
+func setChunkFrontmatter(meta *ChunkMetadata, seg *Segment) {
+	if seg.NoteFrontmatter == nil {
+		return
+	}
+	meta.Tags = extractStringList(seg.NoteFrontmatter, "tags")
+	meta.Aliases = extractStringList(seg.NoteFrontmatter, "aliases")
+	meta.Created = extractScalar(seg.NoteFrontmatter, "created")
+	meta.Updated = extractScalar(seg.NoteFrontmatter, "updated")
+}
+
+// validateChunkInput validates input parameters for chunk creation.
 func validateChunkInput(input ChunkInput) error {
 	if strings.TrimSpace(input.Text) == "" {
 		return fmt.Errorf("chunk text cannot be empty")
@@ -127,79 +152,66 @@ func validateChunkInput(input ChunkInput) error {
 	return nil
 }
 
-// computeChunkID возвращает стабильный идентификатор чанка.
-// Формат: <segmentID>:<hex hash первых 16 байт SHA-256 от текста чанка>.
+// computeChunkID returns a stable identifier for the chunk.
+// Format: <segmentID>:<hex hash of first chunkIDHashBytes bytes of SHA-256 of chunk text>.
 func computeChunkID(segmentID, chunkText string) string {
 	h := sha256.Sum256([]byte(chunkText))
-	return fmt.Sprintf("%s:%x", segmentID, h[:16])
+	return fmt.Sprintf("%s:%x", segmentID, h[:chunkIDHashBytes])
 }
 
-// TextToEmbed возвращает текст чанка, предварённый контекстной информацией
-// (путь к файлу, предки, заголовок текущего сегмента) для улучшения эмбеддинга.
+// TextToEmbed returns the chunk text prefixed with contextual information
+// (file path, ancestors, current heading) to improve embedding quality.
 func (c *Chunk) TextToEmbed() string {
 	var lines []string
 
-	// 1. Полный путь к файлу
 	if c.Metadata.FilePath != "" {
 		lines = append(lines, c.Metadata.FilePath)
 	}
-
-	// 2. Хлебные крошки (предки + текущий заголовок)
 	if len(c.Metadata.Ancestors) > 0 || c.Metadata.HeadingText != "" {
 		parts := append(c.Metadata.Ancestors, c.Metadata.HeadingText)
-		lines = append(lines, strings.Join(parts, " > "))
+		lines = append(lines, strings.Join(parts, breadcrumbSeparator))
 	}
-
-	// 3. Content Type для нетекстовых чанков
-	if c.Metadata.DomType != "" && c.Metadata.DomType != "text" {
-		lines = append(lines, "Content Type: "+c.Metadata.DomType)
+	if c.Metadata.DomType != "" && c.Metadata.DomType != domTypeText {
+		lines = append(lines, contentTypePrefix+c.Metadata.DomType)
 	}
 
 	if len(lines) == 0 {
 		return c.Text
 	}
-
-	// 4. Разделитель: две пустые строки
-	return strings.Join(lines, "\n") + "\n\n\n" + c.Text
+	return strings.Join(lines, "\n") + embeddingSeparator + c.Text
 }
 
-// TextToLLM возвращает очищенный от Markdown-форматирования текст чанка,
-// пригодный для использования в промпте.
+// TextToLLM returns the chunk text with Markdown formatting removed.
+// This is suitable for direct inclusion in an LLM prompt.
 func (c *Chunk) TextToLLM() string {
-	replacer := strings.NewReplacer(
-		"**", "",
-		"*", "",
-		"__", "",
-		"_", "",
-	)
-	return replacer.Replace(c.Text)
+	return markdownReplacer.Replace(c.Text)
 }
 
-// IsContentChanged сравнивает текущий ID чанка с ранее сохранённым.
-// Возвращает true, если текст чанка изменился (изменился ID, т.к. ID включает хеш текста).
+// IsContentChanged compares the current chunk ID with a previously saved ID.
+// Returns true if the chunk text has changed (ID includes hash of text).
 func (c *Chunk) IsContentChanged(oldChunkID string) bool {
 	return c.ID != oldChunkID
 }
 
-// TokenEstimate возвращает приблизительное количество токенов из метаданных.
+// TokenEstimate returns the approximate token count from metadata.
 func (c *Chunk) TokenEstimate() int {
 	return c.Metadata.TokenCount
 }
 
-// SetLinks устанавливает горизонтальные связи в метаданных чанка.
+// SetLinks sets horizontal links in the chunk metadata.
 func (c *Chunk) SetLinks(links []link.Link) {
 	c.Metadata.Links = links
 }
 
-// MetadataJSON возвращает JSON-представление метаданных чанка.
+// MetadataJSON returns the JSON representation of the chunk metadata.
 func (c *Chunk) MetadataJSON() ([]byte, error) {
 	return json.Marshal(c.Metadata)
 }
 
-// --- вспомогательные функции для извлечения свойств frontmatter ---
+// --- helper functions for frontmatter property extraction ---
 
-// extractStringList извлекает список строк из свойства с указанным именем.
-// Если свойство отсутствует или не является списком, возвращает nil.
+// extractStringList extracts a list of strings from the property with the given name.
+// Returns nil if the property is missing or is not a list.
 func extractStringList(fm *frontmatter.Frontmatter, name string) []string {
 	if fm == nil {
 		return nil
@@ -211,8 +223,8 @@ func extractStringList(fm *frontmatter.Frontmatter, name string) []string {
 	return p.Value.List
 }
 
-// extractScalar извлекает скалярное значение свойства с указанным именем.
-// Возвращает пустую строку, если свойство отсутствует или не является скаляром.
+// extractScalar extracts a scalar value from the property with the given name.
+// Returns an empty string if the property is missing or is not a scalar.
 func extractScalar(fm *frontmatter.Frontmatter, name string) string {
 	if fm == nil {
 		return ""
@@ -223,5 +235,3 @@ func extractScalar(fm *frontmatter.Frontmatter, name string) string {
 	}
 	return p.Value.Scalar
 }
-
-// PropertyAliases import can be removed if not used; we only need the strings.
