@@ -30,7 +30,6 @@ func (c Chunk) String() string {
 }
 
 func writeChunkMetadata(b *strings.Builder, m ChunkMetadata) {
-	fmt.Fprintf(b, "  ChunkID:      %s\n", m.ChunkID)
 	fmt.Fprintf(b, "  SegmentID:    %s\n", m.SegmentID)
 	fmt.Fprintf(b, "  ChunkIndex:   %d\n", m.ChunkIndex)
 	fmt.Fprintf(b, "  TotalChunks:  %d\n", m.TotalChunks)

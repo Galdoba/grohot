@@ -27,7 +27,12 @@ func main() {
 	blockParser := parser.NewParser()
 	blockBuilder := hierarchy.NewBuilder()
 	chunker := chunker.NewSegmentChunker()
-	v, err := vault.NewVault(root, blockParser, blockBuilder, chunker)
+	cfg := vault.Dependencies{
+		Parser:  blockParser,
+		Builder: blockBuilder,
+		Chunker: chunker,
+	}
+	v, err := vault.NewVault(root, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
