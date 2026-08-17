@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Galdoba/grohot/internal/domain/vault"
@@ -14,10 +16,11 @@ import (
 )
 
 func main() {
+	home, _ := os.UserHomeDir()
 	start := time.Now()
 
 	// 1. Определяем корень хранилища
-	path := `c:\Users\pemaltynov\Documents\Obsidian\nounamental_rhizome\Projects\books\_tests\WBH_Introduction.md`
+	path := filepath.Join(home, "Documents", "Obsidian", "nounamental_rhizome")
 	root, err := vault.FindVaultRoot(path)
 	if err != nil {
 		log.Fatal(err)
@@ -56,7 +59,7 @@ func main() {
 
 	// 6. Эмбеддинг
 	emb := embedder.NewHashEmbedder(256)
-	store := storage.NewJSONStore("chunks.json")
+	store := storage.NewJSONStore(filepath.Join(home, "chunks.json"))
 	for i := range chunks {
 		chunk := &chunks[i]
 		embedding, err := emb.Embed(chunk.TextToEmbed())
