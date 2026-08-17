@@ -29,7 +29,6 @@ type ChunkInput struct {
 // reconstruct the context of a chunk.
 type ChunkMetadata struct {
 	// Идентификация и порядок
-	ChunkID     string `json:"chunk_id"`
 	SegmentID   string `json:"segment_id"`
 	ChunkIndex  int    `json:"chunk_index"`  // номер чанка внутри сегмента (0-based)
 	TotalChunks int    `json:"total_chunks"` // общее число чанков в этом сегменте
@@ -70,7 +69,6 @@ func NewChunk(seg *Segment, input ChunkInput) (*Chunk, error) {
 	tokenCount := len([]rune(input.Text)) / runesPerToken
 
 	meta := ChunkMetadata{
-		ChunkID:     chunkID,
 		SegmentID:   seg.ID,
 		ChunkIndex:  input.Index,
 		TotalChunks: input.TotalChunks,
